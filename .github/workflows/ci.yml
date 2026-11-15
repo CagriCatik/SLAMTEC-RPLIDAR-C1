@@ -1,0 +1,68 @@
+name: Software checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e .
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q src tests ros2 scripts
+      - run: c1-lab scene --output artifacts/scene
+      - run: c1-lab scene --baseline artifacts/scene/scene.json --output artifacts/compare
+      - run: c1-lab map --scans 12 --output artifacts/map
+      - run: c1-lab map --source replay --input artifacts/map --scans 12 --output artifacts/replay
+      - run: c1-lab landmarks --input artifacts/map/landmarks.json --confirmed --output artifacts/query.json
+      - run: c1-lab plan --input artifacts/map/grid.npz --start .5 .5 --goal 2 2 --output artifacts/plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo-python-${{ matrix.python }}
+          path: artifacts/
+  sdk-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/build_bridge.py
+      - name: Invalid-port failure must be clean
+        run: |
+          set +e
+          artifacts/c1_bridge /dev/c1-does-not-exist --inspect
+          result=$?
+          test "$result" -eq 2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-bridge-linux
+          path: artifacts/
+  viewer:
+    runs-on: ubuntu-latest
+    env:
+      MPLBACKEND: Agg
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[viewer]'
+      - run: python -m unittest discover -s tests -p test_visual.py -v
+      - run: c1-lab view --headless --scans 1 --save artifacts/cartesian.png
+      - run: c1-lab view --polar --headless --scans 1 --save artifacts/polar.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: headless-views
+          path: artifacts/

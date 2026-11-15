@@ -1,0 +1,17 @@
+# Architektur und Datenvertrag
+
+Der Kern umfasst models, geometry, processing, odometry, mapping, landmarks und planning. Er kennt keine GUI, serielle Protokolle, SDK- oder ROS-Bibliotheken. storage und applications besitzen Dateieffekte, drivers den Bridge-Prozess, viewer Matplotlib. CLI orchestriert. SDK-API-Verwendung bleibt in drivers/c1_bridge.cpp. Lernprojekte verwenden dieselben Module.
+
+Scan-Schema 1: Winkel in Radiant, Distanzen in Metern, Status UNKNOWN=0/HIT=1/CLEAR=2, Sequenz, Zeit in Sekunden mit Domain, Frame-ID, Grenzen und Metadaten. Optional: unveränderte HQ-Q14-Winkel, Q2-Viertelmillimeter-Distanzen, Qualitätsbyte und Flags. NPZ ohne Pickle, JSON-Metadaten. Unbekannte Distanz darf NaN/0 sein; bekannte HIT/CLEAR-Distanzen müssen endlich und innerhalb der Grenzen liegen. CLEAR ist eine explizite Bestätigung, keine Interpretation fehlender Hardware-Rückgaben.
+
+Kernachsen x vorwärts/y links, positive Winkel gegen Uhrzeigersinn. SDK-Konversion analog nicht invertiertem offiziellen ROS-Treiber: native_rad = q14*pi/(2*16384), theta=wrap(pi-native_rad), range=Q2/4000. Physische Montage/Frontachse separat prüfen. Native Reihenfolge und Werte bleiben erhalten; Algorithmen sortieren lokale Ansichten. Der ROS-Treiber kann ein kompensiertes Winkelraster publizieren; dieses ist nicht identisch mit nativen HQ-Punkten.
+
+`angular_bins` erzeugt ausdrücklich abgeleitete Winkelbins mit nächstem gültigen Treffer, ohne Interpolation. Zeitliche Medianfilter verlangen gleiche Winkelraster/Zeitdomain und positive Zeitfolge; nur in allen Frames gültige HITs werden genutzt. Keine Bewegungskompensation. Filter verwerfen nach UNKNOWN und erhalten Rohwerte.
+
+Cluster verwenden Winkel- und Abstandsnachbarschaft, unterbrechen bei ungültigen Punkten und doppelten Winkeln. Die 0/360-Verbindung ist nur für vollständig erklärte Revolutionen erlaubt. Linien sind RANSAC/TLS-Hypothesen; kollineare getrennte Oberflächen können zusammengefasst werden. Ecken sind nahe Segmentenden liegende Schnittpunkthypothesen. Daraus folgt keine freie Passage oder Objektklasse.
+
+Odometrie schätzt vorheriger-Sensor→aktueller-Sensor. Weltpose = alte Weltpose @ inverse(Relativpose). ICP-Gates prüfen Überlappung, Geometriekondition, Konvergenz, Restfehler und Bewegung. Symmetrie und falsche Korrespondenzen bleiben möglich. Erste gültige Ansicht definiert nur den Ursprung; sie beweist noch keine Beobachtbarkeit. Nach Verlust ist Fusion verriegelt, weitere Scans bleiben für Diagnose speicherbar. Keine automatische Relokalisierung, Deskew oder Loop Closure.
+
+Occupancy Grid: Log-Odds mit geklemmten Werten, pro Scan höchstens eine Aktualisierung je Zelle und Priorität für Endpunktbelegung. UNKNOWN-Strahlen ändern keine Zellen. HIT räumt beobachteten Strahlbereich und belegt den Endpunkt; explizites CLEAR räumt bis zum bestätigten Ende. Blindzone bleibt konservativ unbekannt. Ausserhalb liegende Endpunkte erzeugen kein künstliches Randhindernis. Sensor außerhalb des festen Grids stoppt Fusion. Zellgrößen-/Inverse-Sensormodell sind Modellannahmen, keine statistisch kalibrierte Garantie.
+
+Snapshot-Ausgaben verwenden temporäre Datei plus exklusiven Hardlink; lokales Dateisystem mit Hardlinks erforderlich. Sessions sind neue Verzeichnisse. Journale werden je Scan geflusht. Bei Prozess-/Datenträgerausfall können unvollständige Dateien/Sitzungen zurückbleiben; Abschlussdateien sind dann nicht garantiert. Die Prozess-Bridge wird bei regulärem Abbruch terminiert und hat eigenes Signal-/Motor-Cleanup; erzwungener Kill erlaubt keine physische Stopgarantie.

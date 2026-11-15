@@ -1,0 +1,21 @@
+{
+  "matching": {
+    "correspondence_m": 0.3,
+    "max_rmse_m": 0.035,
+    "min_overlap": 0.4,
+    "min_points": 30,
+    "max_translation_m": 0.2,
+    "max_rotation_rad": 0.15,
+    "max_condition": 10000.0,
+    "iterations": 35
+  },
+  "grid": {
+    "resolution_m": 0.05,
+    "width": 240,
+    "height": 240,
+    "origin_x": -6.0,
+    "origin_y": -6.0,
+    "free_log_odds": -0.4,
+    "occupied_log_odds": 0.85
+  }
+}
